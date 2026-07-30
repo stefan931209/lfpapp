@@ -1,10 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 
-// Creează un proiect gratuit pe https://supabase.com și înlocuiește valorile de mai jos
-// (Project Settings -> API -> Project URL / anon public key)
-const SUPABASE_URL = 'https://YOUR_PROJECT_ID.supabase.co';
-const SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY';
+const SUPABASE_URL = 'https://kmlrdekctqdcqyxgyhsb.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_w7EYj2tL273dK5KyofZEcw_H_pD99mK';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
@@ -16,33 +14,13 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 });
 
 /*
-Schema minimă recomandată în Supabase (SQL editor):
+Schema deja creată în Supabase (SQL editor), cu RLS activat:
 
-create table profiles (
-  id uuid references auth.users primary key,
-  full_name text,
-  level numeric,
-  preferred_side text,       -- 'left' | 'right'
-  favorite_club text,
-  avatar_url text,
-  created_at timestamp default now()
-);
-
-create table matches (
-  id uuid default gen_random_uuid() primary key,
-  club text,
-  match_date date,
-  match_time time,
-  level numeric,
-  players_needed int,
-  players_joined int default 1,
-  created_by uuid references auth.users,
-  created_at timestamp default now()
-);
-
-create table ready_to_play (
-  user_id uuid references auth.users primary key,
-  active_until timestamp,
-  updated_at timestamp default now()
-);
+- profiles (id, full_name, rating, is_provisional, matches_played, created_at)
+- matches (id, created_by, club_name, match_date, match_time, duration_minutes,
+           min_level, max_level, status, created_at)
+- ready_to_play (id, user_id, available_from, available_until, created_at)
+- match_results (id, match_id, team_a_score, team_b_score,
+                 confirmed_by_team_a, confirmed_by_team_b, created_at)
+- player_votes (id, match_id, voter_id, rated_player_id, vote, created_at)
 */
