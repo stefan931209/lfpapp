@@ -194,7 +194,10 @@ export default function HomeScreen({ navigation }) {
         latitude = position.coords.latitude;
         longitude = position.coords.longitude;
       } catch (e) {
-        // continuăm fără locație dacă eșuează
+        Alert.alert(
+          'Locație indisponibilă',
+          'Nu am putut citi locația telefonului (verifică dacă GPS-ul e pornit). Rămâi activ în radar, dar fără distanță calculată.'
+        );
       }
     } else {
       Alert.alert(
@@ -417,7 +420,11 @@ export default function HomeScreen({ navigation }) {
                   <Text style={styles.playerMeta}>
                     Nivel {Number(item.profile?.rating ?? 3).toFixed(1)}
                     {item.profile?.favorite_club ? ` · ${item.profile.favorite_club}` : ''}
-                    {item.distance != null ? ` · ${item.distance.toFixed(1)} km` : ''}
+                    {item.distance != null
+                      ? ` · ${item.distance.toFixed(1)} km`
+                      : myCoords
+                      ? ' · distanță indisponibilă (el/ea nu a permis locația)'
+                      : ' · activează-te pentru a vedea distanța'}
                   </Text>
                 </View>
                 <View style={styles.liveDot} />
