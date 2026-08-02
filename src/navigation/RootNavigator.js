@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 
 import { supabase } from '../lib/supabase';
-import { colors } from '../theme';
+import { colors, spacing } from '../theme';
 
 import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
@@ -18,11 +19,23 @@ import ChatScreen from '../screens/ChatScreen';
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
+function LogoHeader() {
+  return (
+    <View style={headerStyles.wrapper}>
+      <Text style={headerStyles.logo}>LFP</Text>
+      <Text style={headerStyles.tagline}>Get me on court.</Text>
+    </View>
+  );
+}
+
 function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        headerShown: false,
+        headerShown: true,
+        headerTitle: () => <LogoHeader />,
+        headerTitleAlign: 'center',
+        headerStyle: { backgroundColor: colors.card, elevation: 0, shadowOpacity: 0 },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarIcon: ({ color, size }) => {
@@ -39,6 +52,24 @@ function MainTabs() {
     </Tab.Navigator>
   );
 }
+
+const headerStyles = StyleSheet.create({
+  wrapper: {
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+  },
+  logo: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.accent,
+    letterSpacing: 1,
+  },
+  tagline: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: -2,
+  },
+});
 
 export default function RootNavigator() {
   const [session, setSession] = useState(null);
