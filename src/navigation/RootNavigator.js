@@ -12,6 +12,8 @@ import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import CreateMatchScreen from '../screens/CreateMatchScreen';
 import MatchHistoryScreen from '../screens/MatchHistoryScreen';
+import PlayerProfileScreen from '../screens/PlayerProfileScreen';
+import ChatScreen from '../screens/ChatScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -72,6 +74,19 @@ export default function RootNavigator() {
               name="MatchHistory"
               component={MatchHistoryScreen}
               options={{ headerShown: true, title: 'Istoric meciuri' }}
+            />
+            <Stack.Screen
+              name="PlayerProfile"
+              component={PlayerProfileScreen}
+              options={{ headerShown: true, title: 'Profil jucător' }}
+            />
+            <Stack.Screen
+              name="Chat"
+              component={ChatScreen}
+              options={({ route }) => ({
+                headerShown: true,
+                title: route.params?.userName ?? 'Chat',
+              })}
             />
           </>
         ) : (
