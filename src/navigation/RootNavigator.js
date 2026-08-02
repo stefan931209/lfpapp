@@ -10,6 +10,7 @@ import { colors, spacing } from '../theme';
 
 import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
+import MessagesScreen from '../screens/MessagesScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import CreateMatchScreen from '../screens/CreateMatchScreen';
 import MatchHistoryScreen from '../screens/MatchHistoryScreen';
@@ -41,6 +42,7 @@ function MainTabs() {
         tabBarIcon: ({ color, size }) => {
           const icons = {
             Home: 'radio-outline',
+            Messages: 'chatbubbles-outline',
             Profile: 'person-outline',
           };
           return <Ionicons name={icons[route.name]} size={size} color={color} />;
@@ -48,6 +50,7 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Radar' }} />
+      <Tab.Screen name="Messages" component={MessagesScreen} options={{ title: 'Mesaje' }} />
       <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profil' }} />
     </Tab.Navigator>
   );
