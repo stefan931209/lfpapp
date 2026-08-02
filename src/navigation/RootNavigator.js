@@ -30,6 +30,45 @@ function LogoHeader() {
 }
 
 function MainTabs() {
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    let channel;
+
+    async function setup() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      async function refreshUnreadCount() {
+        const { count } = await supabase
+          .from('messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('to_user', user.id)
+          .eq('read', false);
+        setUnreadCount(count ?? 0);
+      }
+
+      await refreshUnreadCount();
+
+      // Actualizare live: orice mesaj nou primit sau marcat citit reface numărul
+      channel = supabase
+        .channel(`unread-messages-${user.id}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'messages' },
+          () => refreshUnreadCount()
+        )
+        .subscribe();
+    }
+
+    setup();
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, []);
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -50,7 +89,14 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Radar' }} />
-      <Tab.Screen name="Messages" component={MessagesScreen} options={{ title: 'Mesaje' }} />
+      <Tab.Screen
+        name="Messages"
+        component={MessagesScreen}
+        options={{
+          title: 'Mesaje',
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+        }}
+      />
       <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profil' }} />
     </Tab.Navigator>
   );
