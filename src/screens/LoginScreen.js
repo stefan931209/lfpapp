@@ -15,6 +15,7 @@ import { colors, spacing, radius } from '../theme';
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -35,6 +36,28 @@ export default function LoginScreen() {
     // Navigarea către Home se face automat prin listener-ul de sesiune din RootNavigator
   }
 
+  async function handleForgotPassword() {
+    if (!email) {
+      Alert.alert(
+        'Introdu email-ul',
+        'Scrie-ți adresa de email în câmpul de mai sus, apoi apasă din nou "Am uitat parola".'
+      );
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    setLoading(false);
+
+    if (error) {
+      Alert.alert('Eroare', error.message);
+    } else {
+      Alert.alert(
+        'Verifică email-ul',
+        'Ți-am trimis un link de resetare a parolei, dacă adresa e înregistrată.'
+      );
+    }
+  }
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -53,14 +76,29 @@ export default function LoginScreen() {
           value={email}
           onChangeText={setEmail}
         />
-        <TextInput
-          style={styles.input}
-          placeholder="Parolă"
-          placeholderTextColor={colors.textMuted}
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
+
+        <View style={styles.passwordRow}>
+          <TextInput
+            style={styles.passwordInput}
+            placeholder="Parolă"
+            placeholderTextColor={colors.textMuted}
+            secureTextEntry={!showPassword}
+            value={password}
+            onChangeText={setPassword}
+          />
+          <TouchableOpacity
+            style={styles.showButton}
+            onPress={() => setShowPassword((v) => !v)}
+          >
+            <Text style={styles.showButtonText}>{showPassword ? 'Ascunde' : 'Arată'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {!isSignUp && (
+          <TouchableOpacity onPress={handleForgotPassword}>
+            <Text style={styles.forgotText}>Am uitat parola</Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity style={styles.button} onPress={handleAuth} disabled={loading}>
           <Text style={styles.buttonText}>
@@ -114,6 +152,36 @@ const styles = StyleSheet.create({
     color: colors.text,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  passwordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.xs,
+  },
+  passwordInput: {
+    flex: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    fontSize: 15,
+    color: colors.text,
+  },
+  showButton: {
+    paddingHorizontal: spacing.md,
+  },
+  showButtonText: {
+    color: colors.primary,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  forgotText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    textAlign: 'right',
+    marginBottom: spacing.md,
   },
   button: {
     backgroundColor: colors.primary,

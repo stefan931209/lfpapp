@@ -38,6 +38,8 @@ export default function HomeScreen({ navigation }) {
   const [userId, setUserId] = useState(null);
   const [myCoords, setMyCoords] = useState(null);
   const [readyActiveUntil, setReadyActiveUntil] = useState(null);
+  const [readyTotalMinutes, setReadyTotalMinutes] = useState(null);
+  const [remainingSeconds, setRemainingSeconds] = useState(null);
   const [matches, setMatches] = useState([]);
   const [joinedMatchIds, setJoinedMatchIds] = useState([]);
   const [onlinePlayers, setOnlinePlayers] = useState([]);
@@ -75,8 +77,18 @@ export default function HomeScreen({ navigation }) {
       .maybeSingle();
     if (myAvailability?.active_until && new Date(myAvailability.active_until) > new Date()) {
       setReadyActiveUntil(myAvailability.active_until);
+      // Estimăm durata totală (pt. bară) — alegem cel mai apropiat preset de mai sus
+      const remainingMin = Math.max(
+        0,
+        (new Date(myAvailability.active_until) - new Date()) / 60000
+      );
+      const closestPreset =
+        DURATIONS.find((d) => d.minutes >= remainingMin)?.minutes ??
+        DURATIONS[DURATIONS.length - 1].minutes;
+      setReadyTotalMinutes((prev) => prev ?? closestPreset);
     } else {
       setReadyActiveUntil(null);
+      setReadyTotalMinutes(null);
     }
     if (myAvailability?.latitude != null) {
       setMyCoords({ latitude: myAvailability.latitude, longitude: myAvailability.longitude });
@@ -149,6 +161,21 @@ export default function HomeScreen({ navigation }) {
     loadAll();
   }, [loadAll]);
 
+  // Numărătoare inversă live pentru "Ready to Play"
+  useEffect(() => {
+    if (!readyActiveUntil) {
+      setRemainingSeconds(null);
+      return;
+    }
+    function tick() {
+      const diff = Math.max(0, Math.floor((new Date(readyActiveUntil) - new Date()) / 1000));
+      setRemainingSeconds(diff);
+    }
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [readyActiveUntil]);
+
   async function activateReadyToPlay(minutes) {
     const {
       data: { user },
@@ -184,6 +211,7 @@ export default function HomeScreen({ navigation }) {
     });
 
     setReadyActiveUntil(activeUntil);
+    setReadyTotalMinutes(minutes);
     if (latitude != null) setMyCoords({ latitude, longitude });
     loadAll();
   }
@@ -278,15 +306,30 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           ))}
         </View>
-        {readyActiveUntil && (
-          <Text style={styles.activeBadge}>
-            Ești activ în radar până la{' '}
-            {new Date(readyActiveUntil).toLocaleTimeString('ro-RO', {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-            .
-          </Text>
+        {readyActiveUntil && remainingSeconds != null && (
+          <View style={styles.countdownWrapper}>
+            <View style={styles.countdownTrack}>
+              <View
+                style={[
+                  styles.countdownFill,
+                  {
+                    width: `${Math.min(
+                      100,
+                      Math.max(
+                        0,
+                        (remainingSeconds / ((readyTotalMinutes ?? 60) * 60)) * 100
+                      )
+                    )}%`,
+                  },
+                ]}
+              />
+            </View>
+            <Text style={styles.activeBadge}>
+              Ești activ în radar încă{' '}
+              {String(Math.floor(remainingSeconds / 60)).padStart(2, '0')}:
+              {String(remainingSeconds % 60).padStart(2, '0')}
+            </Text>
+          </View>
         )}
       </View>
 
@@ -435,6 +478,19 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
     fontSize: 13,
+  },
+  countdownWrapper: {
+    marginTop: spacing.sm,
+  },
+  countdownTrack: {
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: radius.full,
+    overflow: 'hidden',
+  },
+  countdownFill: {
+    height: '100%',
+    backgroundColor: colors.primary,
   },
   createLink: {
     color: colors.primary,

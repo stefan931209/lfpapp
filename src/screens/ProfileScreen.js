@@ -8,7 +8,9 @@ import {
   TextInput,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
 import { colors, spacing, radius } from '../theme';
 
@@ -17,10 +19,12 @@ export default function ProfileScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const [fullName, setFullName] = useState('');
   const [preferredSide, setPreferredSide] = useState(null);
   const [favoriteClub, setFavoriteClub] = useState('');
+  const [ratingInput, setRatingInput] = useState('');
 
   useEffect(() => {
     loadProfile();
@@ -39,7 +43,6 @@ export default function ProfileScreen({ navigation }) {
       .eq('id', user.id)
       .single();
 
-    // Dacă profilul nu există încă (primul login), îl creăm
     if (!data) {
       const { data: created } = await supabase
         .from('profiles')
@@ -53,7 +56,63 @@ export default function ProfileScreen({ navigation }) {
     setFullName(data?.full_name ?? '');
     setPreferredSide(data?.preferred_side ?? null);
     setFavoriteClub(data?.favorite_club ?? '');
+    setRatingInput(data?.rating != null ? String(data.rating) : '3.0');
     setLoading(false);
+  }
+
+  async function handlePickPhoto() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Acces necesar', 'Ai nevoie să permiți accesul la poze ca să-ți schimbi avatarul.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+
+    if (result.canceled) return;
+
+    setUploadingPhoto(true);
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const asset = result.assets[0];
+      const response = await fetch(asset.uri);
+      const blob = await response.arrayBuffer();
+      const fileExt = asset.uri.split('.').pop() || 'jpg';
+      const filePath = `${user.id}/${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, blob, {
+          contentType: asset.mimeType || 'image/jpeg',
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrlData.publicUrl })
+        .eq('id', user.id);
+
+      setProfile((prev) => ({ ...prev, avatar_url: publicUrlData.publicUrl }));
+    } catch (e) {
+      Alert.alert('Eroare la încărcare', e.message ?? 'Încearcă din nou.');
+    } finally {
+      setUploadingPhoto(false);
+    }
   }
 
   async function handleSave() {
@@ -63,13 +122,20 @@ export default function ProfileScreen({ navigation }) {
     } = await supabase.auth.getUser();
     if (!user) return;
 
+    const parsedRating = parseFloat(ratingInput.replace(',', '.'));
+    const updatePayload = {
+      full_name: fullName.trim(),
+      preferred_side: preferredSide,
+      favorite_club: favoriteClub.trim(),
+    };
+    // Ratingul de start (ex. din Playtomic) se poate seta doar cât timp profilul e provizoriu
+    if (profile?.is_provisional && !Number.isNaN(parsedRating)) {
+      updatePayload.rating = parsedRating;
+    }
+
     const { error } = await supabase
       .from('profiles')
-      .update({
-        full_name: fullName.trim(),
-        preferred_side: preferredSide,
-        favorite_club: favoriteClub.trim(),
-      })
+      .update(updatePayload)
       .eq('id', user.id);
 
     setSaving(false);
@@ -93,7 +159,11 @@ export default function ProfileScreen({ navigation }) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.avatarWrapper}>
+      <TouchableOpacity
+        style={styles.avatarWrapper}
+        onPress={editing ? handlePickPhoto : undefined}
+        disabled={!editing || uploadingPhoto}
+      >
         {profile?.avatar_url ? (
           <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
         ) : (
@@ -103,7 +173,14 @@ export default function ProfileScreen({ navigation }) {
             </Text>
           </View>
         )}
-      </View>
+        {editing && (
+          <View style={styles.avatarEditBadge}>
+            <Text style={styles.avatarEditBadgeText}>
+              {uploadingPhoto ? '...' : '✏️'}
+            </Text>
+          </View>
+        )}
+      </TouchableOpacity>
 
       {editing ? (
         <TextInput
@@ -119,7 +196,18 @@ export default function ProfileScreen({ navigation }) {
 
       <View style={styles.statsRow}>
         <View style={styles.statBox}>
-          <Text style={styles.statValue}>{Number(profile?.rating ?? 3).toFixed(1)}</Text>
+          {editing && profile?.is_provisional ? (
+            <TextInput
+              style={styles.ratingInput}
+              value={ratingInput}
+              onChangeText={setRatingInput}
+              keyboardType="decimal-pad"
+              placeholder="3.0"
+              placeholderTextColor={colors.textMuted}
+            />
+          ) : (
+            <Text style={styles.statValue}>{Number(profile?.rating ?? 3).toFixed(1)}</Text>
+          )}
           <Text style={styles.statLabel}>
             Rating{profile?.is_provisional ? ' (provizoriu)' : ''}
           </Text>
@@ -129,6 +217,14 @@ export default function ProfileScreen({ navigation }) {
           <Text style={styles.statLabel}>Meciuri jucate</Text>
         </View>
       </View>
+
+      {editing && profile?.is_provisional && (
+        <Text style={styles.ratingHint}>
+          Ai deja un rating pe Playtomic sau altă platformă? Pune-l aici ca punct de plecare —
+          de acum înainte, rating-ul tău crește sau scade automat, în funcție de rezultatele
+          meciurilor jucate în LFP.
+        </Text>
+      )}
 
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>Parte preferată</Text>
@@ -196,6 +292,7 @@ export default function ProfileScreen({ navigation }) {
               setFullName(profile?.full_name ?? '');
               setPreferredSide(profile?.preferred_side ?? null);
               setFavoriteClub(profile?.favorite_club ?? '');
+              setRatingInput(profile?.rating != null ? String(profile.rating) : '3.0');
             }}
           >
             <Text style={styles.cancelText}>Renunță</Text>
@@ -256,6 +353,22 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '700',
   },
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: colors.primary,
+    width: 28,
+    height: 28,
+    borderRadius: radius.full,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: colors.card,
+  },
+  avatarEditBadgeText: {
+    fontSize: 12,
+  },
   name: {
     fontSize: 20,
     fontWeight: '700',
@@ -276,7 +389,7 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xs,
   },
   statBox: {
     backgroundColor: colors.card,
@@ -292,11 +405,27 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 18,
   },
+  ratingInput: {
+    fontWeight: '700',
+    color: colors.text,
+    fontSize: 18,
+    textAlign: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    minWidth: 50,
+  },
   statLabel: {
     fontSize: 11,
     color: colors.textMuted,
     marginTop: spacing.xs,
     textAlign: 'center',
+  },
+  ratingHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.sm,
   },
   section: {
     width: '100%',
@@ -304,6 +433,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing.md,
     marginBottom: spacing.sm,
+    marginTop: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
   },
