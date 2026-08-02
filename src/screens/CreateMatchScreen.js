@@ -22,15 +22,26 @@ export default function CreateMatchScreen({ navigation }) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const { error } = await supabase.from('matches').insert({
-      club,
-      match_date: date,
-      match_time: time,
-      level: parseFloat(level),
-      players_needed: parseInt(playersNeeded, 10),
-      players_joined: 1,
-      created_by: user?.id,
-    });
+    const { data: created, error } = await supabase
+      .from('matches')
+      .insert({
+        club_name: club,
+        match_date: date,
+        match_time: time,
+        level: parseFloat(level),
+        players_needed: parseInt(playersNeeded, 10),
+        players_joined: 1,
+        created_by: user?.id,
+      })
+      .select()
+      .single();
+
+    if (!error && created) {
+      // Creatorul meciului se alătură automat, în echipa A
+      await supabase
+        .from('match_players')
+        .insert({ match_id: created.id, user_id: user.id, team: 'A' });
+    }
 
     setSaving(false);
 

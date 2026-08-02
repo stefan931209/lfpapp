@@ -18,22 +18,75 @@ const DURATIONS = [
 ];
 
 export default function HomeScreen({ navigation }) {
-  const [readyActive, setReadyActive] = useState(false);
+  const [userId, setUserId] = useState(null);
+  const [readyActiveUntil, setReadyActiveUntil] = useState(null);
   const [matches, setMatches] = useState([]);
+  const [joinedMatchIds, setJoinedMatchIds] = useState([]);
+  const [onlinePlayers, setOnlinePlayers] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadMatches = useCallback(async () => {
-    const { data, error } = await supabase
+  const loadAll = useCallback(async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+    setUserId(user.id);
+
+    // Meciuri deschise
+    const { data: matchData } = await supabase
       .from('matches')
       .select('*')
+      .eq('status', 'open')
       .order('match_date', { ascending: true })
       .limit(20);
-    if (!error && data) setMatches(data);
+    setMatches(matchData ?? []);
+
+    // Meciurile la care userul s-a alăturat deja (ca să dezactivăm JOIN dublu)
+    const { data: joined } = await supabase
+      .from('match_players')
+      .select('match_id')
+      .eq('user_id', user.id);
+    setJoinedMatchIds((joined ?? []).map((j) => j.match_id));
+
+    // Starea proprie de Ready to Play
+    const { data: myAvailability } = await supabase
+      .from('ready_to_play')
+      .select('*')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (myAvailability?.active_until && new Date(myAvailability.active_until) > new Date()) {
+      setReadyActiveUntil(myAvailability.active_until);
+    } else {
+      setReadyActiveUntil(null);
+    }
+
+    // Radar — jucători online acum (activi, excluzând userul curent)
+    const { data: activePlayers } = await supabase
+      .from('ready_to_play')
+      .select('user_id, active_until')
+      .gt('active_until', new Date().toISOString())
+      .neq('user_id', user.id);
+
+    if (activePlayers && activePlayers.length > 0) {
+      const ids = activePlayers.map((p) => p.user_id);
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, rating, favorite_club')
+        .in('id', ids);
+
+      const merged = activePlayers.map((p) => ({
+        ...p,
+        profile: profiles?.find((pr) => pr.id === p.user_id),
+      }));
+      setOnlinePlayers(merged);
+    } else {
+      setOnlinePlayers([]);
+    }
   }, []);
 
   useEffect(() => {
-    loadMatches();
-  }, [loadMatches]);
+    loadAll();
+  }, [loadAll]);
 
   async function activateReadyToPlay(minutes) {
     const {
@@ -47,12 +100,31 @@ export default function HomeScreen({ navigation }) {
       .from('ready_to_play')
       .upsert({ user_id: user.id, active_until: activeUntil });
 
-    setReadyActive(true);
+    setReadyActiveUntil(activeUntil);
+    loadAll();
+  }
+
+  async function handleJoin(matchId) {
+    if (!userId) return;
+    const { error } = await supabase
+      .from('match_players')
+      .insert({ match_id: matchId, user_id: userId });
+
+    if (!error) {
+      const match = matches.find((m) => m.id === matchId);
+      if (match) {
+        await supabase
+          .from('matches')
+          .update({ players_joined: (match.players_joined ?? 1) + 1 })
+          .eq('id', matchId);
+      }
+      loadAll();
+    }
   }
 
   async function onRefresh() {
     setRefreshing(true);
-    await loadMatches();
+    await loadAll();
     setRefreshing(false);
   }
 
@@ -78,8 +150,13 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           ))}
         </View>
-        {readyActive && (
-          <Text style={styles.activeBadge}>Ești activ în radar acum.</Text>
+        {readyActiveUntil && (
+          <Text style={styles.activeBadge}>
+            Ești activ în radar până la {new Date(readyActiveUntil).toLocaleTimeString('ro-RO', {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}.
+          </Text>
         )}
       </View>
 
@@ -99,31 +176,71 @@ export default function HomeScreen({ navigation }) {
             data={matches}
             keyExtractor={(item) => item.id}
             scrollEnabled={false}
-            renderItem={({ item }) => (
-              <View style={styles.matchCard}>
-                <View style={styles.matchCardHeader}>
-                  <Text style={styles.matchClub}>{item.club}</Text>
-                  <Text style={styles.matchTime}>
-                    {item.match_date} · {item.match_time}
+            renderItem={({ item }) => {
+              const alreadyJoined = joinedMatchIds.includes(item.id);
+              const full = (item.players_joined ?? 1) >= (item.players_needed ?? 4);
+              return (
+                <View style={styles.matchCard}>
+                  <View style={styles.matchCardHeader}>
+                    <Text style={styles.matchClub}>{item.club_name}</Text>
+                    <Text style={styles.matchTime}>
+                      {item.match_date} · {item.match_time}
+                    </Text>
+                  </View>
+                  <Text style={styles.matchDetails}>
+                    {item.players_joined ?? 1}/{item.players_needed ?? 4} jucători · Nivel{' '}
+                    {item.level}
                   </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.joinButton,
+                      (alreadyJoined || full) && styles.joinButtonDisabled,
+                    ]}
+                    onPress={() => handleJoin(item.id)}
+                    disabled={alreadyJoined || full}
+                  >
+                    <Text style={styles.joinButtonText}>
+                      {alreadyJoined ? 'DEJA ÎNSCRIS' : full ? 'COMPLET' : 'JOIN'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-                <Text style={styles.matchDetails}>
-                  {item.players_joined}/{item.players_needed} jucători · Nivel{' '}
-                  {item.level}
-                </Text>
-                <TouchableOpacity style={styles.joinButton}>
-                  <Text style={styles.joinButtonText}>JOIN</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+              );
+            }}
           />
         )}
       </View>
 
-      {/* Available Players / Clubs / Events - placeholder pentru extindere */}
+      {/* Radar jucători online */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>👥 Available Players</Text>
-        <Text style={styles.emptyText}>În curs de implementare.</Text>
+        <Text style={styles.sectionTitle}>👥 Jucători online acum</Text>
+        {onlinePlayers.length === 0 ? (
+          <Text style={styles.emptyText}>Niciun jucător activ în radar momentan.</Text>
+        ) : (
+          <FlatList
+            data={onlinePlayers}
+            keyExtractor={(item) => item.user_id}
+            scrollEnabled={false}
+            renderItem={({ item }) => (
+              <View style={styles.playerRow}>
+                <View style={styles.playerAvatar}>
+                  <Text style={styles.playerAvatarText}>
+                    {item.profile?.full_name?.[0]?.toUpperCase() ?? '?'}
+                  </Text>
+                </View>
+                <View style={styles.playerInfo}>
+                  <Text style={styles.playerName}>
+                    {item.profile?.full_name ?? 'Jucător LFP'}
+                  </Text>
+                  <Text style={styles.playerMeta}>
+                    Nivel {Number(item.profile?.rating ?? 3).toFixed(1)}
+                    {item.profile?.favorite_club ? ` · ${item.profile.favorite_club}` : ''}
+                  </Text>
+                </View>
+                <View style={styles.liveDot} />
+              </View>
+            )}
+          />
+        )}
       </View>
     </ScrollView>
   );
@@ -219,9 +336,51 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     alignItems: 'center',
   },
+  joinButtonDisabled: {
+    backgroundColor: colors.border,
+  },
   joinButtonText: {
     color: colors.accent,
     fontWeight: '700',
     fontSize: 13,
+  },
+  playerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  playerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.full,
+    backgroundColor: colors.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.sm,
+  },
+  playerAvatarText: {
+    color: colors.accent,
+    fontWeight: '700',
+  },
+  playerInfo: {
+    flex: 1,
+  },
+  playerName: {
+    fontWeight: '600',
+    color: colors.text,
+    fontSize: 14,
+  },
+  playerMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  liveDot: {
+    width: 10,
+    height: 10,
+    borderRadius: radius.full,
+    backgroundColor: colors.primary,
   },
 });

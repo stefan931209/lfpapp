@@ -11,6 +11,7 @@ import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import CreateMatchScreen from '../screens/CreateMatchScreen';
+import MatchHistoryScreen from '../screens/MatchHistoryScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -66,6 +67,11 @@ export default function RootNavigator() {
               name="CreateMatch"
               component={CreateMatchScreen}
               options={{ headerShown: true, title: 'Creează meci', presentation: 'modal' }}
+            />
+            <Stack.Screen
+              name="MatchHistory"
+              component={MatchHistoryScreen}
+              options={{ headerShown: true, title: 'Istoric meciuri' }}
             />
           </>
         ) : (
